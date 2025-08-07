@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Berichtsheft-Assistent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .loader {
+            border-top-color: #3498db;
+            -webkit-animation: spin 1s linear infinite;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-2xl bg-white rounded-xl shadow-lg p-6 md:p-8">
+        
+        <!-- Header -->
+        <div class="text-center mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">Berichtsheft-Assistent</h1>
+            <p class="text-gray-500 mt-2">Vereinfache das Schreiben deiner Berichte.</p>
+        </div>
+
+        <!-- Form Section -->
+        <div class="space-y-6">
+            <!-- Day Selection -->
+            <div>
+                <label for="day-select" class="block text-sm font-medium text-gray-700 mb-1">Wochentag auswählen</label>
+                <select id="day-select" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                    <option>Montag</option>
+                    <option>Dienstag</option>
+                    <option>Mittwoch</option>
+                    <option>Donnerstag</option>
+                    <option>Freitag</option>
+                </select>
+            </div>
+
+            <!-- Activities Input -->
+            <div>
+                <label for="activities-input" class="block text-sm font-medium text-gray-700 mb-1">Heutige Tätigkeiten</label>
+                <textarea id="activities-input" rows="8" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="Gib hier deine Tätigkeiten ein (z.B. in Stichpunkten, mit Kommas getrennt oder als Fließtext)..."></textarea>
+            </div>
+
+            <!-- Generate Button -->
+            <button id="generate-btn" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-300 ease-in-out flex items-center justify-center">
+                <span id="btn-text">Bericht erstellen</span>
+                <div id="loader" class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-6 w-6 ml-3 hidden"></div>
+            </button>
+        </div>
+
+        <!-- Output Section -->
+        <div id="output-container" class="mt-8 hidden">
+            <div class="flex justify-between items-center mb-2">
+                 <h2 class="text-xl font-semibold text-gray-800">Erstellter Bericht</h2>
+                 <button id="copy-btn" class="bg-gray-200 text-gray-700 text-sm font-medium py-1 px-3 rounded-lg hover:bg-gray-300 transition">
+                    Kopieren
+                 </button>
+            </div>
+            <div id="output-box" class="w-full p-4 bg-gray-50 rounded-lg border border-gray-200 min-h-[150px] whitespace-pre-wrap text-gray-700">
+            </div>
+            <div id="copy-success" class="text-green-600 text-sm mt-2 text-right hidden">Text wurde kopiert!</div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Element References
+        const daySelect = document.getElementById('day-select');
+        const activitiesInput = document.getElementById('activities-input');
+        const generateBtn = document.getElementById('generate-btn');
+        const btnText = document.getElementById('btn-text');
+        const loader = document.getElementById('loader');
+        const outputContainer = document.getElementById('output-container');
+        const outputBox = document.getElementById('output-box');
+        const copyBtn = document.getElementById('copy-btn');
+        const copySuccess = document.getElementById('copy-success');
+
+        // --- Event Listener for the Generate Button ---
+        generateBtn.addEventListener('click', async () => {
+            const day = daySelect.value;
+            const activities = activitiesInput.value.trim();
+
+            if (!activities) {
+                outputBox.textContent = 'Bitte gib zuerst deine Tätigkeiten ein, bevor du einen Bericht erstellst.';
+                outputBox.classList.add('text-red-500');
+                outputContainer.classList.remove('hidden');
+                return;
+            }
+            
+            outputBox.classList.remove('text-red-500');
+            setLoadingState(true);
+
+            // --- FIX: Updated prompt to generate a more natural, less overly formal tone ---
+            const prompt = `
+                Du bist ein Assistent, der Auszubildenden hilft, ihr Berichtsheft zu schreiben.
+                Deine Aufgabe ist es, die vom Benutzer eingegebenen Tätigkeiten in einen professionellen, zusammenhängenden Bericht umzuwandeln. Die Eingabe kann aus Stichpunkten, kommagetrennten Sätzen oder unstrukturiertem Text bestehen.
+                
+                Wichtige Regeln, die du unbedingt befolgen musst:
+                1.  Formuliere einen flüssigen Einleitungssatz. Beginne den Bericht mit einer natürlichen Formulierung, die den Wochentag einbezieht. Starre Anfänge wie "Am Montag hat der Auszubildende..." sollen vermieden werden. Gutes Beispiel: "Der ${day} begann für den Auszubildenden mit..." oder "Am ${day}morgen startete der Auszubildende mit der Aufgabe, ...". Nutze den angegebenen Wochentag (${day}) kreativ im ersten Satz.
+                2.  Schreibe den gesamten Text in der 3. Person Singular (z.B. "Der Auszubildende hat...", "Er führte aus...", "Seine Aufgaben umfassten..."). Verwende niemals "Ich" oder "Man".
+                3.  Schreibe in einem sachlichen, aber natürlichen Stil, so wie es ein Auszubildender in seinem Berichtsheft tun würde. Es sollte kompetent klingen, aber nicht übertrieben formell oder gestelzt. Formuliere ganze, grammatikalisch korrekte Sätze.
+                4.  Fasse die Tätigkeiten logisch zusammen. Wandle die Stichpunkte in einen flüssig lesbaren Text um und zähle sie nicht einfach nur auf.
+                5.  Der Output darf nur der reine Berichtstext sein, ohne zusätzliche Anmerkungen oder Titel.
+
+                Hier sind die Tätigkeiten für den ${day}:
+                ---
+                ${activities}
+                ---
+            `;
+
+            try {
+                const generatedText = await callGeminiAPI(prompt);
+                outputBox.textContent = generatedText;
+                outputContainer.classList.remove('hidden');
+            } catch (error) {
+                console.error("Fehler bei der API-Anfrage:", error);
+                outputBox.textContent = `Ein Fehler ist aufgetreten. Die Anfrage konnte nicht verarbeitet werden. Bitte versuchen Sie es später erneut. (Details: ${error.message})`;
+                outputBox.classList.add('text-red-500');
+                outputContainer.classList.remove('hidden');
+            } finally {
+                setLoadingState(false);
+            }
+        });
+
+        // --- Event Listener for the Copy Button ---
+        copyBtn.addEventListener('click', () => {
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = outputBox.textContent;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            try {
+                document.execCommand('copy');
+                copySuccess.classList.remove('hidden');
+                setTimeout(() => {
+                    copySuccess.classList.add('hidden');
+                }, 2000);
+            } catch (err) {
+                console.error('Fehler beim Kopieren: ', err);
+            }
+            document.body.removeChild(tempTextArea);
+        });
+
+        /**
+         * Toggles the loading state of the UI
+         */
+        function setLoadingState(isLoading) {
+            if (isLoading) {
+                generateBtn.disabled = true;
+                generateBtn.classList.add('cursor-not-allowed', 'bg-blue-400');
+                btnText.classList.add('hidden');
+                loader.classList.remove('hidden');
+            } else {
+                generateBtn.disabled = false;
+                generateBtn.classList.remove('cursor-not-allowed', 'bg-blue-400');
+                btnText.classList.remove('hidden');
+                loader.classList.add('hidden');
+            }
+        }
+
+        /**
+         * Calls the Gemini API to generate text.
+         * Implements exponential backoff for retries.
+         */
+        async function callGeminiAPI(prompt) {
+            const apiKey = "AIzaSyDx0t5sG12K6A4EN-iQ-5AX-bQ-nMDenns";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            
+            const payload = {
+                contents: [{ role: "user", parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.7, topP: 1.0, maxOutputTokens: 1024 }
+            };
+            
+            let retries = 3;
+            let delay = 1000;
+
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+                            return result.candidates[0].content.parts[0].text;
+                        } else {
+                           const finishReason = result.candidates?.[0]?.finishReason;
+                           if (finishReason) {
+                               let reasonText = finishReason;
+                               if (finishReason === 'MAX_TOKENS') {
+                                   reasonText = 'Die maximale Textlänge wurde erreicht.';
+                               }
+                               throw new Error(`Texterstellung gestoppt. Grund: ${reasonText}.`);
+                           }
+                           throw new Error("Ungültige oder leere Antwort von der API erhalten.");
+                        }
+                    } else if (response.status === 429 || response.status >= 500) {
+                        console.warn(`API-Anfrage fehlgeschlagen mit Status ${response.status}. Wiederhole in ${delay / 1000}s...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay *= 2;
+                    } else {
+                        const errorBody = await response.text();
+                        throw new Error(`API-Anfrage fehlgeschlagen mit Status ${response.status}: ${errorBody}`);
+                    }
+                } catch (error) {
+                    console.warn(`Fetch-Versuch ${i + 1} fehlgeschlagen. Wiederhole in ${delay / 1000}s...`);
+                    if (i === retries - 1) throw error;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                }
+            }
+             throw new Error("API-Anfrage nach mehreren Versuchen fehlgeschlagen.");
+        }
+    </script>
+</body>
+</html>
